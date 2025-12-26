@@ -2,35 +2,46 @@ import express from "express";
 import nodemailer from "nodemailer";
 import cors from "cors";
 import PDFDocument from "pdfkit";
+import https from "https";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-/**
- * Gmail SMTP configuration
- * IMPORTANT:
- * - Enable 2-Step Verification on the Gmail account
- * - Generate an App Password
- * - Paste the App Password below (NOT your normal Gmail password)
- */
+/* ===== SMTP CONFIG ===== */
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
   secure: false,
   auth: {
     user: "tedcryptobanger@gmail.com",
-    pass: "@DennisKorir1874" // ← INSERT APP PASSWORD HERE
+    pass: "@DennisKorir1874" // ← INSERT APP PASSWORD ONLY
   }
 });
 
+/* ===== LOGO URL (USED FOR ALL RECEIPTS) ===== */
+const LOGO_URL = "https://iili.io/fMmJlX2.md.jpg";
+
+/* ===== DOWNLOAD LOGO AS BUFFER ===== */
+function fetchLogoBuffer() {
+  return new Promise((resolve, reject) => {
+    https.get(LOGO_URL, res => {
+      const data = [];
+      res.on("data", chunk => data.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(data)));
+      res.on("error", reject);
+    });
+  });
+}
+
+/* ===== RECEIPT ENDPOINT ===== */
 app.post("/send-receipt", async (req, res) => {
   const r = req.body;
 
   try {
-    // --------- CREATE PDF RECEIPT ---------
     const doc = new PDFDocument({ margin: 50 });
     const buffers = [];
+    const logoBuffer = await fetchLogoBuffer();
 
     doc.on("data", buffers.push.bind(buffers));
     doc.on("end", async () => {
@@ -39,17 +50,13 @@ app.post("/send-receipt", async (req, res) => {
       await transporter.sendMail({
         from: `"Transaction Receipt" <tedcryptobanger@gmail.com>`,
 
-        // Send to customer email if provided, otherwise to your email
+        /* Send to user email if provided, always CC you */
         to: r.customerEmail || "tedcryptobanger@gmail.com",
-
-        // Optional CC / BCC
-        cc: r.cc || undefined,
-        bcc: r.bcc || undefined,
+        cc: "tedcryptobanger@gmail.com",
 
         subject: `Transaction Receipt – ${r.reference}`,
         html: `
-          <h2>Transaction Receipt</h2>
-          <hr/>
+          <h2 style="color:#7c3aed">Transaction Receipt</h2>
           <p><strong>Reference:</strong> ${r.reference}</p>
           <p><strong>Amount:</strong> ${r.amount}</p>
           <p><strong>Account Type:</strong> ${r.accountType}</p>
@@ -69,26 +76,47 @@ app.post("/send-receipt", async (req, res) => {
       res.json({ success: true });
     });
 
-    // --------- PDF CONTENT ---------
-    doc.fontSize(18).text("Transaction Receipt", { align: "center" });
+    /* ===== PDF CONTENT WITH BRANDING ===== */
+
+    // LOGO
+    doc.image(logoBuffer, 50, 40, { width: 120 });
+    doc.moveDown(3);
+
+    // HEADER
+    doc
+      .fontSize(20)
+      .fillColor("#7c3aed")
+      .text("Transaction Receipt", { align: "center" });
+
     doc.moveDown();
-    doc.fontSize(12);
+    doc.fillColor("#000").fontSize(12);
+
+    // DETAILS
     doc.text(`Reference: ${r.reference}`);
     doc.text(`Amount: ${r.amount}`);
     doc.text(`Account Type: ${r.accountType}`);
     doc.text(`Recipient: ${r.recipient}`);
     doc.text(`Status: Pending Required Fee`);
-    doc.moveDown();
-    doc.text("This is an automated receipt.");
+
+    doc.moveDown(2);
+
+    // FOOTER
+    doc
+      .fontSize(10)
+      .fillColor("#6b7280")
+      .text(
+        "This receipt is system-generated and valid without signature.",
+        { align: "center" }
+      );
 
     doc.end();
 
   } catch (err) {
-    console.error("Email error:", err);
-    res.status(500).json({ success: false, error: "Email failed" });
+    console.error("Receipt error:", err);
+    res.status(500).json({ success: false });
   }
 });
 
 app.listen(3000, () => {
-  console.log("SMTP backend running at http://localhost:3000");
+  console.log("SMTP backend running at https://receipt-smtp.onrender.com");
 });
