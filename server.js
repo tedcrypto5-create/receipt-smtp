@@ -15,19 +15,19 @@ const transporter = nodemailer.createTransport({
   secure: false,
   auth: {
     user: "tedcryptobanger@gmail.com",
-    pass: "jvif palg buzi bpco" // ← INSERT APP PASSWORD ONLY
+    pass: process.env.SMTP_PASS // ← APP PASSWORD HERE
   }
 });
 
-/* ===== LOGO URL (USED FOR ALL RECEIPTS) ===== */
+/* ===== LOGO URL ===== */
 const LOGO_URL = "https://iili.io/fMmJlX2.md.jpg";
 
-/* ===== DOWNLOAD LOGO AS BUFFER ===== */
+/* ===== FETCH LOGO ===== */
 function fetchLogoBuffer() {
   return new Promise((resolve, reject) => {
     https.get(LOGO_URL, res => {
       const data = [];
-      res.on("data", chunk => data.push(chunk));
+      res.on("data", d => data.push(d));
       res.on("end", () => resolve(Buffer.concat(data)));
       res.on("error", reject);
     });
@@ -39,6 +39,8 @@ app.post("/send-receipt", async (req, res) => {
   const r = req.body;
 
   try {
+    console.log("📩 Receipt request:", r);
+
     const doc = new PDFDocument({ margin: 50 });
     const buffers = [];
     const logoBuffer = await fetchLogoBuffer();
@@ -49,11 +51,8 @@ app.post("/send-receipt", async (req, res) => {
 
       await transporter.sendMail({
         from: `"Transaction Receipt" <tedcryptobanger@gmail.com>`,
-
-        /* Send to user email if provided, always CC you */
-        to: r.customerEmail || "tedcryptobanger@gmail.com",
+        to: r.email || "tedcryptobanger@gmail.com",
         cc: "tedcryptobanger@gmail.com",
-
         subject: `Transaction Receipt – ${r.reference}`,
         html: `
           <h2 style="color:#7c3aed">Transaction Receipt</h2>
@@ -65,33 +64,23 @@ app.post("/send-receipt", async (req, res) => {
           <br/>
           <small>This receipt was generated automatically.</small>
         `,
-        attachments: [
-          {
-            filename: `Receipt-${r.reference}.pdf`,
-            content: pdfData
-          }
-        ]
+        attachments: [{
+          filename: `Receipt-${r.reference}.pdf`,
+          content: pdfData
+        }]
       });
 
       res.json({ success: true });
     });
 
-    /* ===== PDF CONTENT WITH BRANDING ===== */
-
-    // LOGO
+    /* ===== PDF CONTENT ===== */
     doc.image(logoBuffer, 50, 40, { width: 120 });
     doc.moveDown(3);
 
-    // HEADER
-    doc
-      .fontSize(20)
-      .fillColor("#7c3aed")
-      .text("Transaction Receipt", { align: "center" });
+    doc.fontSize(20).fillColor("#7c3aed")
+       .text("Transaction Receipt", { align: "center" });
 
-    doc.moveDown();
-    doc.fillColor("#000").fontSize(12);
-
-    // DETAILS
+    doc.moveDown().fillColor("#000").fontSize(12);
     doc.text(`Reference: ${r.reference}`);
     doc.text(`Amount: ${r.amount}`);
     doc.text(`Account Type: ${r.accountType}`);
@@ -99,24 +88,19 @@ app.post("/send-receipt", async (req, res) => {
     doc.text(`Status: Pending Required Fee`);
 
     doc.moveDown(2);
-
-    // FOOTER
-    doc
-      .fontSize(10)
-      .fillColor("#6b7280")
-      .text(
-        "This receipt is system-generated and valid without signature.",
-        { align: "center" }
-      );
+    doc.fontSize(10).fillColor("#6b7280")
+       .text("This receipt is system-generated and valid without signature.", { align: "center" });
 
     doc.end();
 
   } catch (err) {
-    console.error("Receipt error:", err);
+    console.error("❌ Receipt error:", err);
     res.status(500).json({ success: false });
   }
 });
 
-app.listen(3000, () => {
-  console.log("SMTP backend running at https://receipt-smtp.onrender.com");
+/* ===== START SERVER (RENDER SAFE) ===== */
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("SMTP backend running");
 });
