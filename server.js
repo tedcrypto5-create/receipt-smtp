@@ -15,7 +15,7 @@ const transporter = nodemailer.createTransport({
   secure: false,
   auth: {
     user: "tedcryptobanger@gmail.com",
-    pass: "@DennisKorir1874" // ← INSERT APP PASSWORD ONLY
+    pass: "jvif palg buzi bpco" // ← INSERT APP PASSWORD ONLY
   }
 });
 
